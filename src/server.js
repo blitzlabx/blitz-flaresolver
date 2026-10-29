@@ -13,6 +13,7 @@
 
 "use strict";
 
+const fs = require("fs");
 const express = require("express");
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
@@ -23,6 +24,28 @@ const PORT = Number(process.env.PORT || 8191);
 const MAX_CONCURRENT = Number(process.env.MAX_CONCURRENT || 2);
 const DEFAULT_TIMEOUT = Number(process.env.DEFAULT_TIMEOUT || 60000);
 const HEADLESS = process.env.HEADLESS !== "false";
+
+const SYSTEM_CHROME_CANDIDATES = [
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  process.env.CHROME_PATH,
+  process.env.CHROMIUM_PATH,
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chrome",
+  "/snap/bin/chromium",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+].filter(Boolean);
+
+function resolveChromePath() {
+  for (const p of SYSTEM_CHROME_CANDIDATES) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch (_) {}
+  }
+  return null;
+}
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -41,9 +64,20 @@ app.use((req, res, next) => {
 let browser = null;
 let activeJobs = 0;
 const queue = [];
+let resolvedChrome = undefined;
 
 async function getBrowser() {
   if (browser && browser.connected) return browser;
+
+  if (resolvedChrome === undefined) {
+    resolvedChrome = resolveChromePath();
+    if (resolvedChrome) {
+      console.log(`[Blitz FlareSolver] using system Chrome: ${resolvedChrome}`);
+    } else {
+      console.log("[Blitz FlareSolver] no system Chrome found — using Puppeteer bundled Chrome");
+    }
+  }
+
   const launchOpts = {
     headless: HEADLESS ? "new" : false,
     args: [
@@ -52,14 +86,26 @@ async function getBrowser() {
       "--disable-dev-shm-usage",
       "--disable-blink-features=AutomationControlled",
       "--disable-infobars",
+      "--disable-gpu",
       "--window-size=1920,1080",
     ],
     defaultViewport: { width: 1920, height: 1080 },
   };
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+
+  if (resolvedChrome) {
+    launchOpts.executablePath = resolvedChrome;
   }
-  browser = await puppeteer.launch(launchOpts);
+
+  try {
+    browser = await puppeteer.launch(launchOpts);
+  } catch (err) {
+    const msg = String(err && err.message ? err.message : err);
+    throw new Error(
+      `Chrome launch failed: ${msg}. ` +
+        `Set PUPPETEER_EXECUTABLE_PATH to a Chromium binary, or run: npx puppeteer browsers install chrome`
+    );
+  }
+
   browser.on("disconnected", () => {
     browser = null;
   });
@@ -137,7 +183,7 @@ async function solveRequest(url, maxTimeout) {
       message: "Challenge solved (or page loaded without challenge)",
       startTimestamp: started,
       endTimestamp: Date.now(),
-      version: "1.0.0-blitz",
+      version: "1.0.1-blitz",
       solution: {
         url: finalUrl,
         status: 200,
@@ -153,7 +199,7 @@ async function solveRequest(url, maxTimeout) {
       message: String(err && err.message ? err.message : err),
       startTimestamp: started,
       endTimestamp: Date.now(),
-      version: "1.0.0-blitz",
+      version: "1.0.1-blitz",
     };
   } finally {
     if (page) {
@@ -168,12 +214,13 @@ async function solveRequest(url, maxTimeout) {
 app.get("/", (_req, res) => {
   res.json({
     name: "Blitz FlareSolver",
-    version: "1.0.0",
+    version: "1.0.1",
     author: "Blitz",
     handle: "@blitzlabx",
     github: "https://github.com/blitzlabx/blitz-flaresolver",
     compatible: "FlareSolverr /v1 API",
     docs: "POST /v1 with { cmd: 'request.get', url, maxTimeout }",
+    chrome: resolvedChrome === undefined ? "not probed yet" : resolvedChrome || "puppeteer-bundled",
     credits: "All credits to Blitz (@blitzlabx)",
   });
 });
@@ -186,6 +233,7 @@ app.get("/health", (_req, res) => {
     activeJobs,
     queue: queue.length,
     browser: !!(browser && browser.connected),
+    chrome: resolvedChrome === undefined ? "not probed yet" : resolvedChrome || "puppeteer-bundled",
   });
 });
 
@@ -227,4 +275,10 @@ process.on("SIGINT", shutdown);
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[Blitz FlareSolver] listening on :${PORT} — by Blitz (@blitzlabx)`);
+  const path = resolveChromePath();
+  console.log(
+    path
+      ? `[Blitz FlareSolver] system Chrome detected: ${path}`
+      : "[Blitz FlareSolver] no system Chrome — will use Puppeteer download/cache"
+  );
 });
