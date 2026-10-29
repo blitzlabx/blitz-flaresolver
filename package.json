@@ -1,21 +1,22 @@
 {
   "name": "blitz-flaresolver",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Blitz FlareSolver — Node.js Cloudflare challenge solver with FlareSolverr-compatible API. Built by Blitz (@blitzlabx).",
   "author": "Blitz <blitz@blitzlabx> (@blitzlabx)",
   "license": "MIT",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "postinstall": "npx puppeteer browsers install chrome || true"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "express": "^4.21.2",
+    "puppeteer": "^23.11.1",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "puppeteer": "^23.11.1"
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
