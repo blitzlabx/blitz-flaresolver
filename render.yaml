@@ -1,0 +1,19 @@
+# Blitz FlareSolver — Render Blueprint
+# Author: Blitz (@blitzlabx)
+
+services:
+  - type: web
+    name: blitz-flaresolver
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8191"
+      - key: HEADLESS
+        value: "true"
+      - key: MAX_CONCURRENT
+        value: "1"
+      - key: DEFAULT_TIMEOUT
+        value: "60000"
